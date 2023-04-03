@@ -1,22 +1,23 @@
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.viewsets import ModelViewSet
-from rest_framework.generics import ListCreateAPIView,RetrieveUpdateDestroyAPIView
-from rest_framework import status
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.mixins import CreateModelMixin,DestroyModelMixin,RetrieveModelMixin
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet,GenericViewSet
+from rest_framework.filters import SearchFilter,OrderingFilter
 
-from store.filters import ProductFilter
-from .models import OrderItem, Product,Collection, Review
-from .serializers import ProductSerializer,CollectionSerializer, ReviewSerializer
+from .pagination import DefaultPagination
+from .filters import ProductFilter
+from .models import Cart,Cartitem, OrderItem, Product,Collection, Review
+from .serializers import AddCartItemSerializer, CartItemSerializer, CartSerializer, ProductSerializer,CollectionSerializer, ReviewSerializer, UpdateCartItemSerializer
 
 class ProductViewSet(ModelViewSet):
     queryset=Product.objects.all()
     serializer_class=ProductSerializer
-    filter_backends=[DjangoFilterBackend]
+    filter_backends=[DjangoFilterBackend,SearchFilter,OrderingFilter]
     filterset_class=ProductFilter
+    pagination_class=DefaultPagination
+    search_fields=['title','description']
+    ordering_fields=['unit_price','last_update']
     
     # def get_queryset(self):
     #     collection_id=self.request.query_params.get('collection_id')
@@ -131,4 +132,30 @@ class ReviewViewSet(ModelViewSet):
     
     def get_serializer_context(self):
         return {'product_id':self.kwargs['product_pk']}
+    
+class CartViewSet(CreateModelMixin,
+                  DestroyModelMixin,
+                  RetrieveModelMixin,
+                  GenericViewSet):
+    queryset=Cart.objects.prefetch_related('items__product').all()
+    serializer_class=CartSerializer
+    
+    
+class CartItemViewSet(ModelViewSet):
+    # queryset=Cartitem.objects.select_related('product')
+    # serializer_class=CartItemSerializer
+    http_method_names=['get','post','patch','delete']
+    def get_serializer_context(self):
+        return {'cart_id':self.kwargs['cart_pk']}
+    
+    
+    def get_queryset(self):
+        return Cartitem.objects.filter(cart_id=self.kwargs['cart_pk']) .select_related('product')
+    
+    def get_serializer_class(self):
+        if self.request.method=='POST':
+            return AddCartItemSerializer
+        elif self.request.method=='PATCH':
+            return UpdateCartItemSerializer
+        return CartItemSerializer
     
